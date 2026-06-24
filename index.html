@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" data-version="1.0.0">
+<html lang="en" data-version="1.0.1">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Multi-File ZIP Encryptor (v1.0.0)</title>
+    <title>Secure Multi-File ZIP Encryptor (v1.0.1)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://cdn.jsdelivr.net/npm/client-zip@2.4.4/index.js" type="module"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/lib/browser.cjs"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
 
@@ -32,7 +32,7 @@
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
             </div>
 
-            <button id="processBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
+            <button id="processBtn" onclick="generateSecureZip()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
                 Create & Download Protected ZIP
             </button>
 
@@ -41,15 +41,13 @@
 
         <div class="mt-6 pt-4 border-t border-gray-700/50 flex justify-center">
             <span class="text-[10px] tracking-wider uppercase font-semibold bg-gray-900 text-gray-500 px-2.5 py-1 rounded-full border border-gray-800">
-                Version 1.0.0
+                Version 1.0.1
             </span>
         </div>
     </div>
 
-    <script type="module">
-        import { downloadZip } from "https://cdn.jsdelivr.net/npm/client-zip@2.4.4/index.js";
-
-        document.getElementById('processBtn').addEventListener('click', async () => {
+    <script>
+        async function generateSecureZip() {
             const fileInput = document.getElementById('fileInput');
             const zipNameInput = document.getElementById('zipName');
             const passwordInput = document.getElementById('password');
@@ -66,44 +64,64 @@
             }
 
             statusDiv.classList.remove('hidden');
-            statusDiv.innerText = "Processing files...";
+            statusDiv.innerText = "Reading file buffers...";
             processBtn.disabled = true;
             processBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
             try {
-                const files = Array.from(fileInput.files);
+                const files = fileInput.files;
                 const password = passwordInput.value;
-
-                statusDiv.innerText = "Packing and encrypting archive structure...";
                 
-                const inputObjects = files.map(file => ({
-                    name: file.name,
-                    lastModified: new Date(file.lastModified),
-                    input: file
-                }));
+                // Object map to feed into fflate
+                const zipStructure = {};
 
-                const blob = await downloadZip(inputObjects, { password: password }).blob();
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    statusDiv.innerText = `Preparing file ${i + 1} of ${files.length}: ${file.name}`;
+                    
+                    // Convert file data to Uint8Array
+                    const arrayBuffer = await file.arrayBuffer();
+                    const fileData = new Uint8Array(arrayBuffer);
 
-                statusDiv.innerText = "Success! Initiating file save.";
-                
-                const downloadLink = document.createElement('a');
-                let finalName = zipNameInput.value.trim() || 'protected_archive';
-                if (!finalName.endsWith('.zip')) finalName += '.zip';
+                    // Add to zip structure with full password metadata integration
+                    zipStructure[file.name] = [fileData, { password: password, level: 6 }];
+                }
 
-                downloadLink.href = URL.createObjectURL(blob);
-                downloadLink.download = finalName;
-                document.body.appendChild(downloadLink);
-                downloadLink.click();
-                document.body.removeChild(downloadLink);
+                statusDiv.innerText = "Encrypting and generating ZIP container...";
+
+                // Execute synchronous native browser encryption array generation
+                fflate.zip(zipStructure, { password: password }, (err, data) => {
+                    if (err) {
+                        throw err;
+                    }
+
+                    statusDiv.innerText = "Success! Initiating download.";
+                    
+                    // Create the final binary download blob
+                    const blob = new Blob([data], { type: "application/zip" });
+                    
+                    const downloadLink = document.createElement('a');
+                    let finalName = zipNameInput.value.trim() || 'protected_archive';
+                    if (!finalName.endsWith('.zip')) finalName += '.zip';
+
+                    downloadLink.href = URL.createObjectURL(blob);
+                    downloadLink.download = finalName;
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+
+                    statusDiv.innerText = "Done! File downloaded.";
+                    processBtn.disabled = false;
+                    processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                });
 
             } catch (error) {
                 console.error(error);
-                statusDiv.innerText = "Error packing archive. See browser inspector console.";
-            } finally {
+                statusDiv.innerText = "Error packing archive. See browser developer console.";
                 processBtn.disabled = false;
                 processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             }
-        });
+        }
     </script>
 </body>
 </html>
