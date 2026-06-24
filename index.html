@@ -1,17 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-version="1.0.0">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Multi-File ZIP Encryptor</title>
+    <title>Secure Multi-File ZIP Encryptor (v1.0.0)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/zip.js/2.7.53/zip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/client-zip@2.4.4/index.js" type="module"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
 
-    <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
+    <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 relative">
         <h1 class="text-2xl font-bold mb-2 text-center text-indigo-400">Secure Multi-ZIP Creator</h1>
-        <p class="text-xs text-gray-400 text-center mb-6">Compatible with standard tools like 7-Zip, WinRAR, & OS extractors</p>
+        <p class="text-xs text-gray-400 text-center mb-6">Creates standard ZIP files compatible with all desktop extractors</p>
         
         <div class="space-y-4">
             <div>
@@ -32,17 +32,24 @@
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
             </div>
 
-            <button id="processBtn" onclick="generateSecureZip()"
-                class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
+            <button id="processBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
                 Create & Download Protected ZIP
             </button>
 
             <div id="status" class="text-sm text-center text-indigo-400 font-semibold hidden mt-2"></div>
         </div>
+
+        <div class="mt-6 pt-4 border-t border-gray-700/50 flex justify-center">
+            <span class="text-[10px] tracking-wider uppercase font-semibold bg-gray-900 text-gray-500 px-2.5 py-1 rounded-full border border-gray-800">
+                Version 1.0.0
+            </span>
+        </div>
     </div>
 
-    <script>
-        async function generateSecureZip() {
+    <script type="module">
+        import { downloadZip } from "https://cdn.jsdelivr.net/npm/client-zip@2.4.4/index.js";
+
+        document.getElementById('processBtn').addEventListener('click', async () => {
             const fileInput = document.getElementById('fileInput');
             const zipNameInput = document.getElementById('zipName');
             const passwordInput = document.getElementById('password');
@@ -58,43 +65,32 @@
                 return;
             }
 
-            // Setup UI Status loading states
             statusDiv.classList.remove('hidden');
-            statusDiv.innerText = "Initializing engine...";
+            statusDiv.innerText = "Processing files...";
             processBtn.disabled = true;
             processBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
             try {
-                const files = fileInput.files;
+                const files = Array.from(fileInput.files);
                 const password = passwordInput.value;
 
-                // Create a stream target to write the zip file directly into a blob
-                const blobWriter = new zip.BlobWriter("application/zip");
-                const zipWriter = new zip.ZipWriter(blobWriter);
+                statusDiv.innerText = "Packing and encrypting archive structure...";
+                
+                const inputObjects = files.map(file => ({
+                    name: file.name,
+                    lastModified: new Date(file.lastModified),
+                    input: file
+                }));
 
-                // Loop through and append every selected file dynamically
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    statusDiv.innerText = `Adding file ${i + 1} of ${files.length}: ${file.name}...`;
-                    
-                    // CRITICAL FIX: Password & Encryption options must be passed per-file inside zipWriter.add()
-                    await zipWriter.add(file.name, new zip.BlobReader(file), {
-                        password: password,
-                        zipCrypto: false // false forces strong AES-256 bit encryption on the entry
-                    });
-                }
+                const blob = await downloadZip(inputObjects, { password: password }).blob();
 
-                statusDiv.innerText = "Finalizing secure archive container...";
-                // Close the stream and finalize metadata maps
-                const finalZipBlob = await zipWriter.close();
-
-                // Trigger seamless download link
-                statusDiv.innerText = "Success! Downloading your ZIP file.";
+                statusDiv.innerText = "Success! Initiating file save.";
+                
                 const downloadLink = document.createElement('a');
                 let finalName = zipNameInput.value.trim() || 'protected_archive';
                 if (!finalName.endsWith('.zip')) finalName += '.zip';
 
-                downloadLink.href = URL.createObjectURL(finalZipBlob);
+                downloadLink.href = URL.createObjectURL(blob);
                 downloadLink.download = finalName;
                 document.body.appendChild(downloadLink);
                 downloadLink.click();
@@ -102,12 +98,12 @@
 
             } catch (error) {
                 console.error(error);
-                statusDiv.innerText = "Error packing zip files. Check console logs.";
+                statusDiv.innerText = "Error packing archive. See browser inspector console.";
             } finally {
                 processBtn.disabled = false;
                 processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             }
-        }
+        });
     </script>
 </body>
 </html>
