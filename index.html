@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Client-Side ZIP Encryptor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
+        <h1 class="text-2xl font-bold mb-6 text-center text-indigo-400">Secure ZIP Encryptor</h1>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-1 text-gray-300">Select Files</label>
+                <input type="file" id="fileInput" multiple 
+                    class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer bg-gray-700 rounded-lg p-2">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-1 text-gray-300">ZIP File Name</label>
+                <input type="text" id="zipName" value="secure_archive" placeholder="secure_archive"
+                    class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-1 text-gray-300">Password Protection</label>
+                <input type="password" id="password" placeholder="Enter strong password"
+                    class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <button id="processBtn" onclick="createEncryptedZip()"
+                class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
+                Encrypt & Download ZIP
+            </button>
+
+            <div id="status" class="text-sm text-center text-gray-400 hidden mt-2"></div>
+        </div>
+    </div>
+
+    <script>
+        async function createEncryptedZip() {
+            const fileInput = document.getElementById('fileInput');
+            const zipNameInput = document.getElementById('zipName');
+            const passwordInput = document.getElementById('password');
+            const statusDiv = document.getElementById('status');
+            const processBtn = document.getElementById('processBtn');
+
+            if (fileInput.files.length === 0) {
+                alert('Please select at least one file.');
+                return;
+            }
+            if (!passwordInput.value) {
+                alert('Please set a password to encrypt the file.');
+                return;
+            }
+
+            // UI updates
+            statusDiv.classList.remove('hidden');
+            statusDiv.innerText = "Zipping files...";
+            processBtn.disabled = true;
+            processBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            try {
+                const zip = new JSZip();
+                const files = fileInput.files;
+
+                // 1. Add all uploaded files to the JSZip instance
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    zip.file(file.name, file);
+                }
+
+                // 2. Generate the standard unencrypted ZIP as an ArrayBuffer
+                const unencryptedZipBuffer = await zip.generateAsync({ type: "arraybuffer" });
+
+                statusDiv.innerText = "Encrypting ZIP archive...";
+
+                // 3. Convert ArrayBuffer to CryptoJS WordArray
+                const wordArray = CryptoJS.lib.WordArray.create(unencryptedZipBuffer);
+
+                // 4. Encrypt the data using AES-256
+                const encrypted = CryptoJS.AES.encrypt(wordArray, passwordInput.value).toString();
+
+                // 5. Convert the encrypted string back into a downloadable Blob
+                const blob = new Blob([encrypted], { type: "application/octet-stream" });
+                
+                // 6. Trigger the download
+                const downloadLink = document.createElement('a');
+                let finalName = zipNameInput.value.trim() || 'secure_archive';
+                if (!finalName.endsWith('.zip')) finalName += '.zip';
+                
+                downloadLink.href = URL.createObjectURL(blob);
+                downloadLink.download = finalName;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+
+                statusDiv.innerText = "Done! Your encrypted file has downloaded.";
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = "An error occurred during encryption.";
+            } finally {
+                processBtn.disabled = false;
+                processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+    </script>
+</body>
+</html>
