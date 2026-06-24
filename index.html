@@ -3,28 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-File Password Protected ZIP</title>
+    <title>Secure Multi-File ZIP Encryptor</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip-pack@1.0.1/dist/jszip-pack.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/zip.js/2.7.53/zip.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
 
     <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
         <h1 class="text-2xl font-bold mb-2 text-center text-indigo-400">Secure Multi-ZIP Creator</h1>
-        <p class="text-xs text-gray-400 text-center mb-6">Compatible with standard tools like WinRAR & 7-Zip</p>
+        <p class="text-xs text-gray-400 text-center mb-6">Compatible with standard tools like 7-Zip, WinRAR, & OS extracts</p>
         
         <div class="space-y-4">
             <div>
                 <label class="block text-sm font-medium mb-1 text-gray-300">Select Multiple Files</label>
                 <input type="file" id="fileInput" multiple 
                     class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer bg-gray-700 rounded-lg p-2">
-                <p class="text-xs text-gray-500 mt-1">You can hold Ctrl/Cmd or Shift to select multiple files.</p>
             </div>
 
             <div>
                 <label class="block text-sm font-medium mb-1 text-gray-300">ZIP File Name</label>
-                <input type="text" id="zipName" value="my_secure_files" placeholder="my_secure_files"
+                <input type="text" id="zipName" value="protected_archive" placeholder="protected_archive"
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
             </div>
 
@@ -34,17 +32,17 @@
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
             </div>
 
-            <button id="processBtn" onclick="generatePasswordZip()"
+            <button id="processBtn" onclick="generateSecureZip()"
                 class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
                 Create & Download Protected ZIP
             </button>
 
-            <div id="status" class="text-sm text-center text-gray-400 hidden mt-2"></div>
+            <div id="status" class="text-sm text-center text-indigo-400 font-semibold hidden mt-2"></div>
         </div>
     </div>
 
     <script>
-        async function generatePasswordZip() {
+        async function generateSecureZip() {
             const fileInput = document.getElementById('fileInput');
             const zipNameInput = document.getElementById('zipName');
             const passwordInput = document.getElementById('password');
@@ -60,43 +58,52 @@
                 return;
             }
 
+            // Setup UI Status loading states
             statusDiv.classList.remove('hidden');
-            statusDiv.innerText = "Building encrypted archive...";
+            statusDiv.innerText = "Initializing engine...";
             processBtn.disabled = true;
             processBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
             try {
-                // Using JSZipPack which wraps JSZip and appends encryption headers to files natively
-                const zip = new JSZipPack();
                 const files = fileInput.files;
                 const password = passwordInput.value;
 
-                // Loop through and append every selected file to the bundle with password meta
+                // Create a stream target to write the zip file directly into a blob
+                const blobWriter = new zip.BlobWriter("application/zip");
+                // Initialize the ZipWriter with global options
+                const zipWriter = new zip.ZipWriter(blobWriter, {
+                    password: password,
+                    zipCrypto: false // Using false forces standard WinZip AES-256 encryption (highly secure)
+                });
+
+                // Loop through and append every selected file dynamically
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    const arrayBuffer = await file.arrayBuffer();
-                    // Encrypting individual files inside the structure
-                    zip.file(file.name, arrayBuffer, { password: password });
+                    statusDiv.innerText = `Adding file ${i + 1} of ${files.length}: ${file.name}...`;
+                    
+                    // Add individual file using a BlobReader stream
+                    await zipWriter.add(file.name, new zip.BlobReader(file));
                 }
 
-                statusDiv.innerText = "Generating ZIP download...";
-                const zipBlob = await zip.generateAsync({ type: "blob" });
+                statusDiv.innerText = "Finalizing secure archive container...";
+                // Close the stream and finalize metadata maps
+                const finalZipBlob = await zipWriter.close();
 
-                // Download execution
+                // Trigger seamless download link
+                statusDiv.innerText = "Success! Downloading your ZIP file.";
                 const downloadLink = document.createElement('a');
-                let finalName = zipNameInput.value.trim() || 'archive';
+                let finalName = zipNameInput.value.trim() || 'protected_archive';
                 if (!finalName.endsWith('.zip')) finalName += '.zip';
 
-                downloadLink.href = URL.createObjectURL(zipBlob);
+                downloadLink.href = URL.createObjectURL(finalZipBlob);
                 downloadLink.download = finalName;
                 document.body.appendChild(downloadLink);
                 downloadLink.click();
                 document.body.removeChild(downloadLink);
 
-                statusDiv.innerText = "Success! Loaded into your downloads folder.";
             } catch (error) {
                 console.error(error);
-                statusDiv.innerText = "Error packing zip files.";
+                statusDiv.innerText = "Error packing zip files. Check console logs.";
             } finally {
                 processBtn.disabled = false;
                 processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
