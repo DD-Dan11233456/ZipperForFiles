@@ -11,7 +11,7 @@
 
     <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
         <h1 class="text-2xl font-bold mb-2 text-center text-indigo-400">Secure Multi-ZIP Creator</h1>
-        <p class="text-xs text-gray-400 text-center mb-6">Compatible with standard tools like 7-Zip, WinRAR, & OS extracts</p>
+        <p class="text-xs text-gray-400 text-center mb-6">Compatible with standard tools like 7-Zip, WinRAR, & OS extractors</p>
         
         <div class="space-y-4">
             <div>
@@ -70,19 +70,18 @@
 
                 // Create a stream target to write the zip file directly into a blob
                 const blobWriter = new zip.BlobWriter("application/zip");
-                // Initialize the ZipWriter with global options
-                const zipWriter = new zip.ZipWriter(blobWriter, {
-                    password: password,
-                    zipCrypto: false // Using false forces standard WinZip AES-256 encryption (highly secure)
-                });
+                const zipWriter = new zip.ZipWriter(blobWriter);
 
                 // Loop through and append every selected file dynamically
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     statusDiv.innerText = `Adding file ${i + 1} of ${files.length}: ${file.name}...`;
                     
-                    // Add individual file using a BlobReader stream
-                    await zipWriter.add(file.name, new zip.BlobReader(file));
+                    // CRITICAL FIX: Password & Encryption options must be passed per-file inside zipWriter.add()
+                    await zipWriter.add(file.name, new zip.BlobReader(file), {
+                        password: password,
+                        zipCrypto: false // false forces strong AES-256 bit encryption on the entry
+                    });
                 }
 
                 statusDiv.innerText = "Finalizing secure archive container...";
