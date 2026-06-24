@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="en" data-version="1.1.0">
+<html lang="en" data-version="1.2.0">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Multi-File ZIP Encryptor (v1.1.0)</title>
+    <title>Secure Multi-File ZIP Encryptor (v1.2.0)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
 
     <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 relative">
         <h1 class="text-2xl font-bold mb-2 text-center text-indigo-400">Secure Multi-ZIP Creator</h1>
-        <p class="text-xs text-gray-400 text-center mb-6">Creates standard encrypted container compatible with browser extraction</p>
+        <p class="text-xs text-gray-400 text-center mb-6">Outputs a real password-protected ZIP archive</p>
         
         <div class="space-y-4">
             <div>
@@ -20,19 +20,19 @@
             </div>
 
             <div>
-                <label class="block text-sm font-medium mb-1 text-gray-300">Archive Name</label>
+                <label class="block text-sm font-medium mb-1 text-gray-300">ZIP File Name</label>
                 <input type="text" id="zipName" value="protected_archive" placeholder="protected_archive"
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
             </div>
 
             <div>
-                <label class="block text-sm font-medium mb-1 text-gray-300">Archive Password</label>
+                <label class="block text-sm font-medium mb-1 text-gray-300">ZIP Password</label>
                 <input type="password" id="password" placeholder="Enter password to lock archive"
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
             </div>
 
-            <button id="processBtn" onclick="generateSecureArchive()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
-                Encrypt & Download Archive
+            <button id="processBtn" onclick="createStandardPasswordZip()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
+                Create & Download Protected ZIP
             </button>
 
             <div id="status" class="text-sm text-center text-indigo-400 font-semibold hidden mt-2"></div>
@@ -40,46 +40,52 @@
 
         <div class="mt-6 pt-4 border-t border-gray-700/50 flex justify-center">
             <span class="text-[10px] tracking-wider uppercase font-semibold bg-gray-900 text-gray-500 px-2.5 py-1 rounded-full border border-gray-800">
-                Version 1.1.0
+                Version 1.2.0
             </span>
         </div>
     </div>
 
     <script>
-        // Simple manual encoder to combine multiple files into a clean data package block
-        function packageFiles(filesBuffers) {
-            let totalLength = 0;
-            filesBuffers.forEach(f => {
-                totalLength += 4 + f.nameBytes.length + 4 + f.data.length;
-            });
-
-            const output = new Uint8Array(totalLength);
-            let offset = 0;
-
-            filesBuffers.forEach(f => {
-                // Write name length (4 bytes)
-                const nameLen = new Uint32Array([f.nameBytes.length]);
-                output.set(new Uint8Array(nameLen.buffer), offset);
-                offset += 4;
-
-                // Write name string bytes
-                output.set(f.nameBytes, offset);
-                offset += f.nameBytes.length;
-
-                // Write data length (4 bytes)
-                const dataLen = new Uint32Array([f.data.length]);
-                output.set(new Uint8Array(dataLen.buffer), offset);
-                offset += 4;
-
-                // Write data
-                output.set(f.data, offset);
-                offset += f.data.length;
-            });
-
-            return output;
+        // Native lightweight JSZipCrypto implementation structure
+        class ZipCryptoEncoder {
+            constructor(password) {
+                this.keys = new Int32Array([305419896, 591751049, 878082192]);
+                for (let i = 0; i < password.length; i++) {
+                    this.updateKeys(password.charCodeAt(i));
+                }
+            }
+            updateKeys(char) {
+                this.keys[0] = this.crc32(this.keys[0], char);
+                this.keys[1] = (this.keys[1] + (this.keys[0] & 255)) | 0;
+                this.keys[1] = (Math.imul(this.keys[1], 134775813) + 1) | 0;
+                this.keys[2] = this.crc32(this.keys[2], this.keys[1] >>> 24);
+            }
+            crc32(crc, byte) {
+                crc ^= byte;
+                for (let j = 0; j < 8; j++) {
+                    crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+                }
+                return crc;
+            }
+            encryptByte(byte) {
+                const temp = (this.keys[2] & 0xffff) | 2;
+                const m = ((temp * (temp ^ 1)) >>> 8) & 255;
+                const encrypted = byte ^ m;
+                this.updateKeys(byte);
+                return encrypted;
+            }
         }
 
-        async function generateSecureArchive() {
+        // Lightweight CRC32 implementation to validate ZIP contents
+        function getCRC32(data) {
+            let crc = 0 ^ (-1);
+            for (let i = 0; i < data.length; i++) {
+                crc = (crc >>> 8) ^ ZipCryptoEncoder.prototype.crc32(0, (crc ^ data[i]) & 255);
+            }
+            return (crc ^ (-1)) >>> 0;
+        }
+
+        async function createStandardPasswordZip() {
             const fileInput = document.getElementById('fileInput');
             const zipNameInput = document.getElementById('zipName');
             const passwordInput = document.getElementById('password');
@@ -87,84 +93,111 @@
             const processBtn = document.getElementById('processBtn');
 
             if (fileInput.files.length === 0) {
-                alert('Please select one or more files first.');
+                alert('Please select files.');
                 return;
             }
             if (!passwordInput.value) {
-                alert('Please set a password.');
+                alert('Please provide a password.');
                 return;
             }
 
             statusDiv.classList.remove('hidden');
-            statusDiv.innerText = "Reading selected files...";
+            statusDiv.innerText = "Processing archives...";
             processBtn.disabled = true;
 
             try {
                 const files = fileInput.files;
                 const password = passwordInput.value;
                 const textEncoder = new TextEncoder();
-                const filesBuffers = [];
+
+                let localHeaders = [];
+                let centralDirectoryHeaders = [];
+                let overallOffset = 0;
 
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    const arrayBuffer = await file.arrayBuffer();
-                    filesBuffers.push({
-                        nameBytes: textEncoder.encode(file.name),
-                        data: new Uint8Array(arrayBuffer)
-                    });
+                    const rawData = new Uint8Array(await file.arrayBuffer());
+                    const nameBytes = textEncoder.encode(file.name);
+                    const crc = getCRC32(rawData);
+
+                    // Setup ZipCrypto engine headers (12 byte cryptographic salt array)
+                    const cryptoEngine = new ZipCryptoEncoder(password);
+                    const randHeader = crypto.getRandomValues(new Uint8Array(12));
+                    // The last byte of the random header validates the entry password verification match
+                    randHeader[11] = (crc >>> 24) & 255; 
+
+                    // Encrypt both the verification salt block and raw data stream bytes
+                    const encryptedPayload = new Uint8Array(12 + rawData.length);
+                    for (let j = 0; j < 12; j++) encryptedPayload[j] = cryptoEngine.encryptByte(randHeader[j]);
+                    for (let j = 0; j < rawData.length; j++) encryptedPayload[12 + j] = cryptoEngine.encryptByte(rawData[j]);
+
+                    // Generate standard Local File Header format arrays
+                    const lfh = new Uint8Array(30 + nameBytes.length);
+                    const view = new DataView(lfh.buffer);
+                    view.setUint32(0, 0x04034b50, true); // Local header signature
+                    view.setUint16(4, 20, true);         // Version needed
+                    view.setUint16(6, 9, true);          // General Purpose Bit Flag (Bit 0 set = Encrypted, Bit 3 optional)
+                    view.setUint16(8, 0, true);          // Compression (0 = Store/Uncompressed)
+                    view.setUint16(10, 0, true);         // Mod Time
+                    view.setUint12(12, 0, true);         // Mod Date
+                    view.setUint32(14, crc, true);       // CRC-32 checksum
+                    view.setUint32(18, encryptedPayload.length, true); // Compressed size 
+                    view.setUint32(22, rawData.length, true);          // Uncompressed size
+                    view.setUint16(26, nameBytes.length, true);        // Filename string size
+                    view.setUint16(28, 0, true);         // Extra field size
+                    lfh.set(nameBytes, 30);
+
+                    // Central Directory Header construct tracking reference map mapping
+                    const cdh = new Uint8Array(46 + nameBytes.length);
+                    const cdhView = new DataView(cdh.buffer);
+                    cdhView.setUint32(0, 0x02014b50, true); // CD Header signature
+                    cdhView.setUint16(4, 20, true);         // Made by
+                    cdhView.setUint16(6, 20, true);         // Required Extract version
+                    cdhView.setUint16(8, 9, true);          // Encryption active flags
+                    cdhView.setUint16(10, 0, true);         // Store type
+                    cdhView.setUint32(16, crc, true);       // CRC check
+                    cdhView.setUint32(20, encryptedPayload.length, true);
+                    cdhView.setUint32(24, rawData.length, true);
+                    cdhView.setUint28(28, nameBytes.length, true);
+                    cdhView.setUint32(42, overallOffset, true); // File offset pointer location index
+                    cdh.set(nameBytes, 46);
+
+                    localHeaders.push(lfh, encryptedPayload);
+                    centralDirectoryHeaders.push(cdh);
+                    overallOffset += lfh.length + encryptedPayload.length;
                 }
 
-                statusDiv.innerText = "Bundling files together...";
-                const rawPackage = packageFiles(filesBuffers);
+                // Compile central data blocks layout sizes
+                const cdBlob = new Blob(centralDirectoryHeaders);
+                const cdBuffer = new Uint8Array(await cdBlob.arrayBuffer());
 
-                statusDiv.innerText = "Deriving cryptographic keys...";
-                // Use Web Crypto to securely generate strong keys from the text password
-                const passwordBytes = textEncoder.encode(password);
-                const baseKey = await crypto.subtle.importKey(
-                    "raw", passwordBytes, { name: "PBKDF2" }, false, ["deriveKey"]
-                );
+                // End of Central Directory metadata record assembly
+                const eocd = new Uint8Array(22);
+                const eocdView = new DataView(eocd.buffer);
+                eocdView.setUint32(0, 0x06054b50, true); // EOCD signature block
+                eocdView.setUint16(8, centralDirectoryHeaders.length, true); // Entries this disk
+                eocdView.setUint16(10, centralDirectoryHeaders.length, true); // Total entries
+                eocdView.setUint32(12, cdBuffer.length, true); // Total size of CD directory
+                eocdView.setUint32(16, overallOffset, true);    // Offset of directory start relative to file start
 
-                const salt = crypto.getRandomValues(new Uint8Array(16));
-                const key = await crypto.subtle.deriveKey(
-                    { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
-                    baseKey,
-                    { name: "AES-GCM", length: 256 },
-                    false,
-                    ["encrypt"]
-                );
+                // Append everything back neatly into a single true universal zip binary chunk
+                const finalZipBlob = new Blob([...localHeaders, cdBuffer, eocd], { type: "application/zip" });
 
-                statusDiv.innerText = "Applying AES-GCM 256-bit encryption...";
-                const iv = crypto.getRandomValues(new Uint8Array(12));
-                const encryptedData = await crypto.subtle.encrypt(
-                    { name: "AES-GCM", iv: iv },
-                    key,
-                    rawPackage
-                );
-
-                // Structure final payload: [SALT (16B)] + [IV (12B)] + [Encrypted Data]
-                const finalBlobBuffer = new Uint8Array(salt.length + iv.length + encryptedData.byteLength);
-                finalBlobBuffer.set(salt, 0);
-                finalBlobBuffer.set(iv, salt.length);
-                finalBlobBuffer.set(new Uint8Array(encryptedData), salt.length + iv.length);
-
-                statusDiv.innerText = "Downloading encrypted file!";
-                const blob = new Blob([finalBlobBuffer], { type: "application/octet-stream" });
-                
+                statusDiv.innerText = "Triggering real ZIP download!";
                 const downloadLink = document.createElement('a');
                 let finalName = zipNameInput.value.trim() || 'protected_archive';
-                if (!finalName.endsWith('.enc')) finalName += '.enc';
+                if (!finalName.endsWith('.zip')) finalName += '.zip';
 
-                downloadLink.href = URL.createObjectURL(blob);
+                downloadLink.href = URL.createObjectURL(finalZipBlob);
                 downloadLink.download = finalName;
                 document.body.appendChild(downloadLink);
                 downloadLink.click();
                 document.body.removeChild(downloadLink);
-
-                statusDiv.innerText = "Finished successfully.";
-
-            } catch (error) {
-                console.error(error);
-                statusDiv.innerText = "Encryption process failed.";
+                
+                statusDiv.innerText = "Success! Saved archive.";
+            } catch(e) {
+                console.error(e);
+                statusDiv.innerText = "Zip assembly failed.";
             } finally {
                 processBtn.disabled = false;
             }
