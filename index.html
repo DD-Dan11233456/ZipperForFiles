@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-version="1.2.0">
+<html lang="en" data-version="1.2.1">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Multi-File ZIP Encryptor (v1.2.0)</title>
+    <title>Secure Multi-File ZIP Encryptor (v1.2.1)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
@@ -40,13 +40,13 @@
 
         <div class="mt-6 pt-4 border-t border-gray-700/50 flex justify-center">
             <span class="text-[10px] tracking-wider uppercase font-semibold bg-gray-900 text-gray-500 px-2.5 py-1 rounded-full border border-gray-800">
-                Version 1.2.0
+                Version 1.2.1
             </span>
         </div>
     </div>
 
     <script>
-        // Native lightweight JSZipCrypto implementation structure
+        // ZipCrypto engine calculations
         class ZipCryptoEncoder {
             constructor(password) {
                 this.keys = new Int32Array([305419896, 591751049, 878082192]);
@@ -76,13 +76,12 @@
             }
         }
 
-        // Lightweight CRC32 implementation to validate ZIP contents
         function getCRC32(data) {
-            let crc = 0 ^ (-1);
+            let crc = -1;
             for (let i = 0; i < data.length; i++) {
                 crc = (crc >>> 8) ^ ZipCryptoEncoder.prototype.crc32(0, (crc ^ data[i]) & 255);
             }
-            return (crc ^ (-1)) >>> 0;
+            return (crc ^ -1) >>> 0;
         }
 
         async function createStandardPasswordZip() {
@@ -102,7 +101,7 @@
             }
 
             statusDiv.classList.remove('hidden');
-            statusDiv.innerText = "Processing archives...";
+            statusDiv.innerText = "Building zip archive arrays...";
             processBtn.disabled = true;
 
             try {
@@ -120,46 +119,49 @@
                     const nameBytes = textEncoder.encode(file.name);
                     const crc = getCRC32(rawData);
 
-                    // Setup ZipCrypto engine headers (12 byte cryptographic salt array)
                     const cryptoEngine = new ZipCryptoEncoder(password);
                     const randHeader = crypto.getRandomValues(new Uint8Array(12));
-                    // The last byte of the random header validates the entry password verification match
                     randHeader[11] = (crc >>> 24) & 255; 
 
-                    // Encrypt both the verification salt block and raw data stream bytes
                     const encryptedPayload = new Uint8Array(12 + rawData.length);
                     for (let j = 0; j < 12; j++) encryptedPayload[j] = cryptoEngine.encryptByte(randHeader[j]);
                     for (let j = 0; j < rawData.length; j++) encryptedPayload[12 + j] = cryptoEngine.encryptByte(rawData[j]);
 
-                    // Generate standard Local File Header format arrays
+                    // FIX: Changed structure maps to standard DataView functions
                     const lfh = new Uint8Array(30 + nameBytes.length);
                     const view = new DataView(lfh.buffer);
-                    view.setUint32(0, 0x04034b50, true); // Local header signature
-                    view.setUint16(4, 20, true);         // Version needed
-                    view.setUint16(6, 9, true);          // General Purpose Bit Flag (Bit 0 set = Encrypted, Bit 3 optional)
-                    view.setUint16(8, 0, true);          // Compression (0 = Store/Uncompressed)
-                    view.setUint16(10, 0, true);         // Mod Time
-                    view.setUint12(12, 0, true);         // Mod Date
-                    view.setUint32(14, crc, true);       // CRC-32 checksum
-                    view.setUint32(18, encryptedPayload.length, true); // Compressed size 
-                    view.setUint32(22, rawData.length, true);          // Uncompressed size
-                    view.setUint16(26, nameBytes.length, true);        // Filename string size
-                    view.setUint16(28, 0, true);         // Extra field size
+                    view.setUint32(0, 0x04034b50, true); 
+                    view.setUint16(4, 20, true);         
+                    view.setUint16(6, 9, true);          // Bit 0 = password active
+                    view.setUint16(8, 0, true);          // No compression
+                    view.setUint16(10, 0, true);         
+                    view.setUint16(12, 0, true);         
+                    view.setUint32(14, crc, true);       
+                    view.setUint32(18, encryptedPayload.length, true); 
+                    view.setUint32(22, rawData.length, true);          
+                    view.setUint16(26, nameBytes.length, true);        
+                    view.setUint16(28, 0, true);         
                     lfh.set(nameBytes, 30);
 
-                    // Central Directory Header construct tracking reference map mapping
                     const cdh = new Uint8Array(46 + nameBytes.length);
                     const cdhView = new DataView(cdh.buffer);
-                    cdhView.setUint32(0, 0x02014b50, true); // CD Header signature
-                    cdhView.setUint16(4, 20, true);         // Made by
-                    cdhView.setUint16(6, 20, true);         // Required Extract version
-                    cdhView.setUint16(8, 9, true);          // Encryption active flags
-                    cdhView.setUint16(10, 0, true);         // Store type
-                    cdhView.setUint32(16, crc, true);       // CRC check
+                    cdhView.setUint32(0, 0x02014b50, true); 
+                    cdhView.setUint16(4, 20, true);         
+                    cdhView.setUint16(6, 20, true);         
+                    cdhView.setUint16(8, 9, true);          
+                    cdhView.setUint16(10, 0, true);         
+                    cdhView.setUint16(12, 0, true);         
+                    cdhView.setUint16(14, 0, true);         
+                    cdhView.setUint32(16, crc, true);       
                     cdhView.setUint32(20, encryptedPayload.length, true);
                     cdhView.setUint32(24, rawData.length, true);
-                    cdhView.setUint28(28, nameBytes.length, true);
-                    cdhView.setUint32(42, overallOffset, true); // File offset pointer location index
+                    cdhView.setUint16(28, nameBytes.length, true);
+                    cdhView.setUint16(30, 0, true);         
+                    cdhView.setUint16(32, 0, true);         
+                    cdhView.setUint16(34, 0, true);         
+                    cdhView.setUint16(36, 0, true);         
+                    cdhView.setUint32(38, 0, true);         
+                    cdhView.setUint32(42, overallOffset, true); 
                     cdh.set(nameBytes, 46);
 
                     localHeaders.push(lfh, encryptedPayload);
@@ -167,23 +169,23 @@
                     overallOffset += lfh.length + encryptedPayload.length;
                 }
 
-                // Compile central data blocks layout sizes
                 const cdBlob = new Blob(centralDirectoryHeaders);
                 const cdBuffer = new Uint8Array(await cdBlob.arrayBuffer());
 
-                // End of Central Directory metadata record assembly
                 const eocd = new Uint8Array(22);
                 const eocdView = new DataView(eocd.buffer);
-                eocdView.setUint32(0, 0x06054b50, true); // EOCD signature block
-                eocdView.setUint16(8, centralDirectoryHeaders.length, true); // Entries this disk
-                eocdView.setUint16(10, centralDirectoryHeaders.length, true); // Total entries
-                eocdView.setUint32(12, cdBuffer.length, true); // Total size of CD directory
-                eocdView.setUint32(16, overallOffset, true);    // Offset of directory start relative to file start
+                eocdView.setUint32(0, 0x06054b50, true); 
+                eocdView.setUint16(4, 0, true);
+                eocdView.setUint16(6, 0, true);
+                eocdView.setUint16(8, centralDirectoryHeaders.length, true); 
+                eocdView.setUint16(10, centralDirectoryHeaders.length, true); 
+                eocdView.setUint32(12, cdBuffer.length, true); 
+                eocdView.setUint32(16, overallOffset, true);    
+                eocdView.setUint16(20, 0, true);
 
-                // Append everything back neatly into a single true universal zip binary chunk
                 const finalZipBlob = new Blob([...localHeaders, cdBuffer, eocd], { type: "application/zip" });
 
-                statusDiv.innerText = "Triggering real ZIP download!";
+                statusDiv.innerText = "Downloading encrypted ZIP file...";
                 const downloadLink = document.createElement('a');
                 let finalName = zipNameInput.value.trim() || 'protected_archive';
                 if (!finalName.endsWith('.zip')) finalName += '.zip';
@@ -194,7 +196,7 @@
                 downloadLink.click();
                 document.body.removeChild(downloadLink);
                 
-                statusDiv.innerText = "Success! Saved archive.";
+                statusDiv.innerText = "Done! Archive downloaded.";
             } catch(e) {
                 console.error(e);
                 statusDiv.innerText = "Zip assembly failed.";
