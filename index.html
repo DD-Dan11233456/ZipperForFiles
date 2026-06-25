@@ -1,17 +1,17 @@
 <!DOCTYPE html>
-<html lang="en" data-version="1.4.0">
+<html lang="en" data-version="1.5.0">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Multi-File ZIP Encryptor (v1.4.0)</title>
+    <title>Secure Multi-File ZIP Encryptor (v1.5.0)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/zip.js/2.7.53/zip-full.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
 
     <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 relative">
         <h1 class="text-2xl font-bold mb-2 text-center text-indigo-400">Secure Multi-ZIP Creator</h1>
-        <p class="text-xs text-gray-400 text-center mb-6">Outputs native zip files compatible with 7-Zip & WinRAR</p>
+        <p class="text-xs text-gray-400 text-center mb-6">Drag & Drop password-protected ZIP generator</p>
         
         <div class="space-y-4">
             <div id="dropZone" class="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-500 hover:bg-gray-750 transition duration-150 relative">
@@ -38,7 +38,7 @@
             </div>
 
             <button id="processBtn" onclick="generateEncryptedZip()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
-                Create & Download ZIP
+                Create & Download Protected ZIP
             </button>
 
             <div id="status" class="text-sm text-center text-indigo-400 font-semibold hidden mt-2"></div>
@@ -46,7 +46,7 @@
 
         <div class="mt-6 pt-4 border-t border-gray-700/50 flex justify-center">
             <span class="text-[10px] tracking-wider uppercase font-semibold bg-gray-900 text-gray-500 px-2.5 py-1 rounded-full border border-gray-800">
-                Version 1.4.0
+                Version 1.5.0
             </span>
         </div>
     </div>
@@ -57,7 +57,7 @@
         const fileCounter = document.getElementById('fileCounter');
         let stagedFiles = [];
 
-        // Drag and drop event handlers
+        // Drag and drop visual events
         ['dragenter', 'dragover'].forEach(eventName => {
             dropZone.addEventListener(eventName, (e) => {
                 e.preventDefault();
@@ -102,33 +102,33 @@
             }
 
             statusDiv.classList.remove('hidden');
-            statusDiv.innerText = "Packing file buffers into zip...";
+            statusDiv.innerText = "Initializing zip engine...";
             processBtn.disabled = true;
 
             try {
-                const zip = new JSZip();
-                const password = passwordInput.value;
+                // FORCE 1: Disable Web Workers to prevent file:/// origin security crashes
+                zip.configure({ useWebWorkers: false });
 
-                // Stage each binary target safely inside the compilation structure
-                for (let i = 0; i < stagedFiles.length; i++) {
-                    const file = stagedFiles[i];
-                    const fileData = await file.arrayBuffer();
-                    zip.file(file.name, fileData);
-                }
-
-                statusDiv.innerText = "Applying encryption settings...";
+                const blobWriter = new zip.BlobWriter("application/zip");
                 
-                // Compile the blob using JSZip options configuration map targets
-                const contentBlob = await zip.generateAsync({
-                    type: "blob",
-                    compression: "DEFLATE",
-                    compressionOptions: { level: 6 },
-                    // Set encryption keys inside metadata definitions
-                    comment: `Encrypted Archive. Key: Standard`
+                // FORCE 2: Use Standard ZipCrypto instead of AES to prevent WebCrypto crashes on local machines
+                const zipWriter = new zip.ZipWriter(blobWriter, {
+                    password: passwordInput.value,
+                    zipCrypto: true 
                 });
 
-                // Wrap into a standardized file downporter layer
-                statusDiv.innerText = "Downloading protected archive container...";
+                // Pack all staged files sequentially
+                for (let i = 0; i < stagedFiles.length; i++) {
+                    const file = stagedFiles[i];
+                    statusDiv.innerText = `Encrypting file ${i + 1} of ${stagedFiles.length}: ${file.name}...`;
+                    await zipWriter.add(file.name, new zip.BlobReader(file));
+                }
+
+                statusDiv.innerText = "Finalizing archive...";
+                const contentBlob = await zipWriter.close();
+
+                // Trigger standard download
+                statusDiv.innerText = "Downloading protected archive...";
                 const downloadLink = document.createElement('a');
                 let finalName = zipNameInput.value.trim() || 'protected_archive';
                 if (!finalName.endsWith('.zip')) finalName += '.zip';
@@ -139,10 +139,10 @@
                 downloadLink.click();
                 document.body.removeChild(downloadLink);
 
-                statusDiv.innerText = "Success! Saved ZIP.";
+                statusDiv.innerText = "Success! Archive secured and saved.";
             } catch (error) {
                 console.error(error);
-                statusDiv.innerText = "Process error encountered.";
+                statusDiv.innerText = `Error: ${error.message}`;
             } finally {
                 processBtn.disabled = false;
             }
