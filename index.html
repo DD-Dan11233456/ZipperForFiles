@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" data-version="1.5.0">
+<html lang="en" data-version="1.5.1">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Multi-File ZIP Encryptor (v1.5.0)</title>
+    <title>Secure Multi-File ZIP Encryptor (v1.5.1)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/zip.js/2.7.53/zip-full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.53/dist/zip-full.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
 
@@ -46,7 +46,7 @@
 
         <div class="mt-6 pt-4 border-t border-gray-700/50 flex justify-center">
             <span class="text-[10px] tracking-wider uppercase font-semibold bg-gray-900 text-gray-500 px-2.5 py-1 rounded-full border border-gray-800">
-                Version 1.5.0
+                Version 1.5.1
             </span>
         </div>
     </div>
@@ -106,6 +106,11 @@
             processBtn.disabled = true;
 
             try {
+                // Ensure zip module is loaded before proceeding
+                if (typeof zip === 'undefined') {
+                    throw new Error("Zip library failed to load from CDN. Please check your internet connection.");
+                }
+
                 // FORCE 1: Disable Web Workers to prevent file:/// origin security crashes
                 zip.configure({ useWebWorkers: false });
 
